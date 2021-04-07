@@ -20,7 +20,7 @@ void draw() {
     w.pop.get(i).step(w);
   }
   
-  if (t % 1 == 0) {
+  if (t % gl.plantFrequency == 0) {
     w.addFood();
   }
   

@@ -6,19 +6,19 @@ class Creature extends Entity {
   int moveTimer;
   
   // Genes
-  int moveRate;
-  float moveStrength;
-  int breedEnergy;
-  int childEnergy;
-  int size;
+  final int moveRate;
+  final float moveStrength;
+  final int breedEnergy;
+  final int childEnergy;
+  final int size;
   
-  // Initialize at start
+  // Initializer for start of simulation
   Creature() {
     moveRate = (int) random(100);
     //moveTimer = moveRate;
     moveTimer = moveRate;
     moveStrength = random(50);
-    size = (int) random(1, 1);
+    size = (int) random(1, 5);
     breedEnergy = (int) random(size*size, size*size*100);
     childEnergy = (int) random(size*size, breedEnergy);
     
@@ -29,18 +29,27 @@ class Creature extends Entity {
     vy = 0;
   }
   
+  
   // Initialize with parents
   Creature(Creature p1, Creature p2) {
     moveRate = (int) random(p1.moveRate, p2.moveRate) + int(randomGaussian() * 20);
     moveTimer = 1;
-    moveStrength = random(p1.moveStrength, p2.moveStrength) + randomGaussian() / 5;
-    moveStrength = max(0.1, moveStrength);
-    size = int(random(p1.size, p2.size) + random(-2, 2));
-    size = max(1, size);
-    breedEnergy = (int) random(p1.breedEnergy, p2.breedEnergy) + int(randomGaussian() * 20);
-    breedEnergy = max(size, breedEnergy);
-    childEnergy = (int) random(p1.childEnergy, p2.childEnergy) + int(randomGaussian() * 10);
-    childEnergy = constrain(childEnergy, size, breedEnergy);
+    moveStrength = max(0.1, 
+      random(p1.moveStrength, p2.moveStrength) + randomGaussian() / 5
+    );
+    size = max(1, 
+      int(
+        random(p1.size, p2.size) + random(-2, 2)
+      )
+    );
+    breedEnergy = (int) max(size, 
+      random(p1.breedEnergy, p2.breedEnergy) + int(randomGaussian() * 20)
+    );
+    childEnergy = (int) constrain(
+      random(p1.childEnergy, p2.childEnergy) + int(randomGaussian() * 10),
+      size,
+      breedEnergy
+    );
     
     x = p1.x;
     y = p1.y;
@@ -49,7 +58,8 @@ class Creature extends Entity {
     vy = 0;
   }
   
-  // Combination of hunt and mate
+  
+  // Pay energy to push towards the given entity
   void goTowards(Entity closest, boolean invert) {
     if (closest == null) {
       return;
@@ -66,7 +76,7 @@ class Creature extends Entity {
         vy += sin(dir) * moveStrength;
       }
       moveTimer += moveRate;
-      energy -= size*size*moveStrength;
+      energy -= myMoveEnergy();
     }
   }
   
@@ -75,7 +85,19 @@ class Creature extends Entity {
   }
   
   float mySight() {
-    return gl.sight * log(size+1);
+    return gl.sightBase + 
+           size * gl.sightLinear +
+           log(size) * gl.sightLog;
+  }
+  
+  float myMoveEnergy() {
+    return moveStrength *
+    (
+        gl.moveEnergyBase + 
+        log(size)*gl.moveEnergyLog +
+        size*gl.moveEnergyLinear +
+        size*size*gl.moveEnergyQuadratic
+    );
   }
   
   Plant findPlant(World world) {
@@ -162,17 +184,17 @@ class Creature extends Entity {
       else
         goTowards(closestMeat);
     }
-    if (closestPredator != null) {
+    if (closestPredator != null && gl.runFromPredators) {
       goTowards(closestPredator, true);
     }
     
     // Update velocities and positions
     x += vx;
     y += vy;
-    /*
-    if (x == 0 || y == 0 || x == width || y == height)
+    
+    if ((x == 0 || y == 0 || x == width || y == height) && gl.cliffs)
       world.removeCreature(this);
-    */
+    
       
     x = constrain(x, 0, width);
     y = constrain(y, 0, height);
@@ -185,10 +207,13 @@ class Creature extends Entity {
     else if (y == height)
       vy = min(0, vy);
     
-    vx *= (1 - 1/float(4*size));
-    vy *= (1 - 1/float(4*size)); //<>//
-    //vx *= gl.friction;
-    //vy *= gl.friction;
+    if (gl.variableFriction) {
+      vx *= (1 - 1/(gl.variableFrictionCoeff*size));
+      vy *= (1 - 1/(gl.variableFrictionCoeff*size)); //<>//
+    } else {
+      vx *= gl.staticFrictionCoeff;
+      vy *= gl.staticFrictionCoeff;
+    }
     
     // See if I'm on plant - if so, eat it
     if (closestPlant != null && dist(closestPlant.x, closestPlant.y, x, y) < 2+(size/2)) {
@@ -198,16 +223,13 @@ class Creature extends Entity {
     
     // See if I'm on meat - if so, eat it
     if (closestMeat != null && dist(closestMeat.x, closestMeat.y, x, y) < (size + closestMeat.size)/2) {
-      energy += max(closestMeat.energy, gl.plantEnergy);
+      energy += max(closestMeat.energy, gl.minMeatEnergy);
       world.removeCreature(closestMeat);
     }
     
     // See if I'm on a potential mate - if so, breed
     if (closestMate != null && dist(closestMate.x, closestMate.y, x, y) < (size + closestMate.size + 2)/2) {
-      //energy = min(energy, breedEnergy);
       Creature child = new Creature(this, closestMate);
-      //energy -= childEnergy * child.size;
-      //closestMate.energy -= closestMate.childEnergy * child.size;
       energy -= childEnergy;
       closestMate.energy -= closestMate.childEnergy;
       world.pop.add(child);
